@@ -1,0 +1,91 @@
+﻿@page "/"
+@inject Data.ApplicationDbContext Context
+@using System.Security.Claims;
+@using Models;
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+
+<h1>Goatfolio Setup</h1>
+
+<img src="\images\brrr.gif" style="float:right" /><p>
+    Welcome @CurrentUser! Please enter your <a href="https://www.alphavantage.co/support/#api-key" target="_blank" title="Alpha Vantage">Alpha Vantage</a> api key and your <a href="https://api.forex/" target="_blank">Forex</a> api key below:<br /><br />
+    
+ <EditForm Model="@userApiKey">
+     <DataAnnotationsValidator />
+     <div class="form-group">
+         <div>Alpha Vantage:</div> <InputText id="user-api-key" @bind-Value="userApiKey.ApiKey" disabled="@AlphaVantageIsDisabled"/> <span style="color:red">*</span>
+         <ValidationMessage For="@(() => userApiKey.ApiKey)" />
+     </div>
+     <div class="form-group">
+         <div>Forex API:</div> <InputText id="user-api-key-forex" @bind-Value="userApiKey.ForexKey" disabled="@ForexIsDisabled"/> <span style="color:red">*</span>
+         <ValidationMessage For="@(() => userApiKey.ForexKey)" />
+     </div>
+
+     <button type="button" class="btn btn-primary" @onclick="() => this.SaveApiKeys()" disabled="@(!context.Validate() || !context.IsModified())">Save changes</button>
+ </EditForm>
+</p>
+
+<p>Your Alpha Vantage API Key: @PlaceholderAlphaVantageApi</p>
+<p>Your Forex API Key: @PlaceholderForexApi</p>
+
+<p>Like the stock? <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&amp;business=jholsgrove%40hotmail.co.uk&amp;currency_code=GBP" target="_blank">Donate</a>.</p>
+
+@code
+{
+    protected bool AlphaVantageIsDisabled { get; set; }
+    protected bool ForexIsDisabled { get; set; }
+    protected bool SavedState = false;
+    private string PlaceholderAlphaVantageApi;
+    private string PlaceholderForexApi;
+    private string CurrentUser = string.Empty;
+    private UsersApiKey userApiKey = new UsersApiKey();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        base.StateHasChanged();
+        CurrentUser = HttpContextAccessor.HttpContext.User.FindFirst(ClaimTypes.Name).Value;
+        userApiKey.User = HttpContextAccessor.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier).Value;
+        var userDefinedApiKey = Context.UserApiKey.Where(x => x.User == userApiKey.User).ToList();
+
+        // Does the user have any keys set yet?
+        if (userDefinedApiKey.Count == 0)
+        {
+            AlphaVantageIsDisabled = false;
+            ForexIsDisabled = false;
+            PlaceholderAlphaVantageApi = "Not Set";
+            PlaceholderForexApi = "Not Set";
+        }
+
+        // If they do, disable relevant form fields
+        else if (userDefinedApiKey.Count > 0)
+        {
+            if (!string.IsNullOrEmpty(userDefinedApiKey[0].ApiKey))
+            {
+                AlphaVantageIsDisabled = true;
+            }
+            if (!string.IsNullOrEmpty(userDefinedApiKey[0].ForexKey))
+            {
+                ForexIsDisabled = true;
+            }
+
+            PlaceholderAlphaVantageApi = userDefinedApiKey[0].ApiKey;
+            PlaceholderForexApi = userDefinedApiKey[0].ForexKey;
+        }
+    }
+
+
+    private async Task SaveApiKeys()
+    {
+        this.StateHasChanged();
+        Context.UserApiKey.Add(new UsersApiKey
+        {
+            User = userApiKey.User,
+            ApiKey = userApiKey.ApiKey,
+            ForexKey = userApiKey.ForexKey
+        });
+
+        SavedState = true;
+        await Context.SaveChangesAsync();
+        await OnInitializedAsync();
+    }
+}

@@ -1,0 +1,310 @@
+﻿@page "/Goatfolio"
+@using Models;
+@using System.Timers;
+@using Api.Forex.Sharp;
+@inject Data.ApplicationDbContext Context
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims;
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@inject IAuthorizationService AuthorizationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h1>Goatfolio</h1>
+
+<p>
+    As the Alpha Venture API is rate limited to five calls per minute, data is refreshed in a staggered fashion once per minute, so as not to be rate limited for a larger portfolio. You must have a valid API key entered in order for this to work.
+</p>
+
+<p>
+    Please note if you are adding anything listed on the London Stock Exchange, make sure to append the symbol with .LON... for example: IAG.LON
+</p>
+
+<div class="form-group">
+    <label class="form-label"><strong>Filter</strong> <i class="fa fa-filter"></i></label>
+    <select class="form-control d-flex" @onchange="(val) => LoadAssets(val.Value.ToString())">
+        @foreach (var filter in this.filters)
+        {
+            <option value=@filter>@filter</option>
+        }
+    </select>
+</div>
+
+<div class="float-right"><button class="btn btn-primary" @onclick="this.ShowNewAssetModal"><i class="fa fa-plus"></i> Add New Asset</button></div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th><span class="sort-link" @onclick="@(() => SortTable("Symbol"))">Symbol</span> <i class="fa fa-building-o"></i> <span class="fa @(GetSortStyle("Symbol"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("EntryDate"))">Entry Date</span> <i class="fa fa-calendar-plus-o"></i> <span class="fa @(GetSortStyle("EntryDate"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("EntryPrice"))">Entry Price</span> <i class="fa fa-gbp"></i> <span class="fa @(GetSortStyle("EntryPrice"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("Volume"))">Volume</span> <i class="fa fa-bar-chart-o"></i> <span class="fa @(GetSortStyle("Volume"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("ExitDate"))">Exit Date</span> <i class="fa fa-calendar-minus-o"></i> <span class="fa @(GetSortStyle("ExitDate"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("ExitPrice"))">Exit Price</span> <i class="fa fa-gbp"></i> <span class="fa @(GetSortStyle("ExitPrice"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("Value"))">Value</span> <i class="fa fa-gbp"></i> <span class="fa @(GetSortStyle("Value"))"></span></th>
+            <th><span class="sort-link" @onclick="@(() => SortTable("ProfitLoss"))">P/L</span> <i class="fa fa-gbp"></i> <span class="fa @(GetSortStyle("ProfitLoss"))"></span></th>
+            <th>Action <i class="fa fa-exclamation-circle"></i></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var asset in this.assets)
+        {
+            <tr>
+                <td>@asset.Symbol</td>
+                <td>@asset.EntryDate</td>
+                <td>@asset.EntryPrice</td>
+                <td>@asset.Volume</td>
+                <td>@asset.ExitDate</td>
+                <td>@asset.ExitPrice</td>
+                <td class="@(asset.Value >= 0 ? "text-success" : "text-danger")">@asset.Value.ToString("N4")</td>
+                <td class="@(asset.ProfitLoss >= 0 ? "text-success" : "text-danger")">@asset.ProfitLoss.ToString("N")</td>
+                <td>
+                    @if (!asset.ExitDate.HasValue)
+
+                    {<button class="btn btn-primary" @onclick="() => ShowSellAssetModal(asset)"><i class="fa fa-minus"></i> Sell Asset</button>}
+                </td>
+            </tr>
+        }
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="6">&nbsp;</td>
+            <td class="@(this.totalValue > 0 ? "text-success" : "text-danger")">£@this.totalValue.ToString("N")</td>
+            <td class="@(this.totalProfitLoss > 0 ? "text-success" : "text-danger")">£@this.totalProfitLoss.ToString("N")</td>
+        </tr>
+    </tfoot>
+</table>
+@if (this.showNewAssetModal)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal show" tabindex="-1" role="dialog" style="display:block">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">New Asset</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" @onclick="() => this.showNewAssetModal = false">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@newAsset">
+                        <div class="form-group">
+                            <label class="form-label" for="new-asset-symbol">Symbol</label>
+                            <InputText id="new-asset-symbol" @bind-Value="newAsset.Symbol" class="form-control" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="new-asset-entry-date">Entry Date</label>
+                            <InputDate @bind-Value="newAsset.EntryDate" class="form-control" id="new-asset-entry-date" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="new-asset-entry-price">Entry Price</label>
+                            <InputNumber @bind-Value="newAsset.EntryPrice" id="new-asset-entry-price" class="form-control" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="new-asset-volume">Volume</label>
+                            <InputNumber @bind-Value="newAsset.Volume" id="new-asset-volume" class="form-control" />
+                        </div>
+                    </EditForm>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" @onclick="() => this.SaveNewAsset()">Save changes</button>
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal" @onclick="() => this.showNewAssetModal = false">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (this.showSellAssetModal)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal show" tabindex="-1" role="dialog" style="display:block">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">New Asset</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" @onclick="() => this.showSellAssetModal = false">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@sellAsset">
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-symbol">Symbol</label>
+                            <label class="form-control" id="sell-asset-symbol">@sellAsset.Symbol</label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-entry-date">Entry Date</label>
+                            <label class="form-control" id="sell-asset-entry-date">@sellAsset.EntryDate</label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-entry-price">Entry Price</label>
+                            <label class="form-control" id="sell-asset-entry-Price">@sellAsset.EntryPrice</label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-volume">Volume</label>
+                            <label class="form-control" id="sell-asset-volume">@sellAsset.Volume</label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-exit-date">Entry Date</label>
+                            <InputDate @bind-Value="sellAsset.ExitDate" class="form-control" id="sell-asset-entry-date" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sell-asset-exit-price">Exit Price</label>
+                            <InputNumber @bind-Value="sellAsset.ExitPrice" id="sell-asset-exit-price" class="form-control" />
+                        </div>
+                    </EditForm>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" @onclick="() => this.SaveSellAsset()">Save changes</button>
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal" @onclick="() => this.showSellAssetModal = false">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code
+{
+    private string[] filters = new string[] { "All", "Open", "Closed" };
+    private string CurrentUser = string.Empty;
+
+    public IList<AssetDto> assets = new List<AssetDto>();
+    private decimal totalValue => this.assets.Sum(x => x.ExitPrice * x.Volume);
+    private decimal totalProfitLoss => this.assets.Sum(x => x.ProfitLoss);
+    private bool showNewAssetModal = false;
+    private bool showSellAssetModal = false;
+
+    private AssetDto newAsset = new AssetDto();
+    private AssetDto sellAsset = new AssetDto();
+
+    private DateTime newAssetEntryDate = DateTime.Today;
+
+    private Timer updateTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        CurrentUser = HttpContextAccessor.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier).Value;
+
+        await this.LoadAssets(this.filters[0]);
+
+        if (this.updateTimer == null)
+        {
+            this.updateTimer = new Timer(60000);
+            this.updateTimer.Elapsed += new ElapsedEventHandler(this.TimerElapsedCallback);
+            this.updateTimer.Enabled = true;
+        }
+    }
+
+    private async Task LoadAssets(string filter)
+    {
+        switch (filter)
+        {
+            case "Open":
+                this.assets = Context.Assets.Where(x => !x.ExitDate.HasValue && x.User.Equals(CurrentUser)).Select(x => x.ToDto()).ToList();
+                break;
+            case "Closed":
+                this.assets = Context.Assets.Where(x => x.ExitDate.HasValue && x.User.Equals(CurrentUser)).Select(x => x.ToDto()).ToList();
+                break;
+            default:
+                this.assets = Context.Assets.Where(x => x.User.Equals(CurrentUser)).Select(x => x.ToDto()).ToList();
+                break;
+        }
+
+        await this.updateAssets(true);
+    }
+
+
+
+    private async Task SaveNewAsset()
+    {
+        Context.Assets.Add(new Asset
+        {
+            EntryDate = this.newAsset.EntryDate,
+            EntryPrice = this.newAsset.EntryPrice,
+            Symbol = this.newAsset.Symbol,
+            Volume = this.newAsset.Volume,
+            User = CurrentUser
+        });
+
+        await Context.SaveChangesAsync();
+
+        this.showNewAssetModal = false;
+
+        await LoadAssets("ALL");
+    }
+
+    private async Task SaveSellAsset()
+    {
+        var dbAsset = Context.Assets.Single(x => x.Id == sellAsset.Id);
+        dbAsset.ExitDate = sellAsset.ExitDate;
+        dbAsset.ExitPrice = sellAsset.ExitPrice;
+        dbAsset.ProfitLoss = (sellAsset.Volume * sellAsset.ExitPrice) - (sellAsset.Volume * sellAsset.EntryPrice);
+
+        await Context.SaveChangesAsync();
+
+        this.showSellAssetModal = false;
+
+        await LoadAssets("ALL");
+    }
+
+    private void ShowNewAssetModal()
+    {
+        this.newAsset = new AssetDto
+        {
+            EntryDate = DateTime.Today
+        };
+
+        this.showNewAssetModal = true;
+    }
+
+    private void ShowSellAssetModal(AssetDto asset)
+    {
+        this.sellAsset = asset;
+        this.showSellAssetModal = true;
+    }
+
+    private async void TimerElapsedCallback(Object source, ElapsedEventArgs e)
+    {
+        await updateAssets();
+    }
+
+    private async Task updateAssets(bool force = false)
+    {
+        var userDefinedApiKey = Context.UserApiKey.Where(x => x.User == CurrentUser).ToList();
+
+        if (userDefinedApiKey[0].ApiKey == null)
+        {
+            userDefinedApiKey[0].ApiKey = "demo";
+        }
+
+        var timeNum = DateTime.Now.Minute % (10);
+        foreach (var asset in this.assets.Where(x => force || !x.ExitDate.HasValue && x.Id % 10 == timeNum))
+        {
+            await asset.Update(userDefinedApiKey[0].ApiKey);
+
+            if (asset.Symbol.Contains(".LON"))
+            {
+                asset.ExitPrice = asset.ExitPrice / 100;
+                asset.Value = asset.ExitPrice / 1000 * asset.Volume;
+            }
+        }
+
+        await ConvertValueToGbp(userDefinedApiKey[0].ForexKey);
+        await InvokeAsync(() => { StateHasChanged(); });
+    }
+
+    private async Task ConvertValueToGbp(string forexApiKey)
+    {
+        foreach (var asset in this.assets)
+
+            if (!asset.Symbol.Contains(".LON"))
+            {
+                var ratesToGet = new string[] { "GBP", "USD" };
+                asset.Value = asset.ExitPrice * asset.Volume;
+                var forexRates = await ApiForex.GetRate(forexApiKey, "proto", "USD", ratesToGet);
+                var convertedValue = forexRates.Convert("GBP", "USD", asset.Value);
+                asset.Value = Math.Round(convertedValue, 2);
+            }
+    }
+}

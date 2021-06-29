@@ -1,0 +1,16 @@
+﻿@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <div class="main">
+<NavLink style="float:right" class="nav-link" href="/identity/account/logout" Match="NavLinkMatch.All">
+    <span class="oi oi-power-standby" aria-hidden="true"></span> Logout
+</NavLink>
+        <div class="content px-4">
+            @Body
+        </div>
+    </div>
+</div>
