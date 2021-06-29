@@ -1,4 +1,4 @@
-# GoatPortfolio
+# Goatfolio
 
 A simple stock portfolio value app made with Blazor dotnet 5.0, EntityFramework Core & dotnet Identity - a project for learning and a bit of fun. 
 
