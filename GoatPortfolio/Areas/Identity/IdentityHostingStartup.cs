@@ -28,12 +28,12 @@ namespace GoatPortfolio.Areas.Identity
                 services.AddTransient<IEmailSender, MailKitEmailSender>();
                 services.Configure<MailKitEmailSenderOptions>(options =>
                 {
-                    options.Host_Address = "";
-                    options.Host_Port = 587;
-                    options.Host_Username = "";
-                    options.Host_Password = "";
-                    options.Sender_EMail = "";
-                    options.Sender_Name = "";
+                    options.Host_Address = context.Configuration.GetValue<string>("SendInBlue:HostAddress");
+                    options.Host_Port = context.Configuration.GetValue<int>("SendInBlue:HostPort");
+                    options.Host_Username = context.Configuration.GetValue<string>("SendInBlue:HostUserName");
+                    options.Host_Password = context.Configuration.GetValue<string>("SendInBlue:HostPassword");
+                    options.Sender_EMail = context.Configuration.GetValue<string>("SendInBlue:HostEmail");
+                    options.Sender_Name = context.Configuration.GetValue<string>("SendInBlue:SenderName");
                 });
             });
         }

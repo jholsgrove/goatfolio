@@ -54,3 +54,4 @@ Thumbs.db
 /GoatPortfolio/GoatPortfolio.csproj.user
 /UnitTests/obj
 /UnitTests/bin
+/GoatPortfolio/appsettings.Development.json
